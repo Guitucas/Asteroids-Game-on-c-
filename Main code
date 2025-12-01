@@ -1,0 +1,452 @@
+#include <wx/wxprec.h>
+#ifndef WX_PRECOMP
+#include <wx/wx.h>
+#endif
+#include <cmath>
+#include <vector>
+#include <memory>
+#include <algorithm>
+#include <cstdlib>
+#include <ctime>
+
+// Balanceamento
+const int SW = 1280;
+const int SH = 720;
+
+const double PLAYER_SPEED = 300.0;
+const double PLAYER_TURN_SPEED = 3.0;
+const double PLAYER_SHOOT_SPEED = 600.0;
+const double PLAYER_SHOOT_COOLDOWN = 0.35;
+const double PLAYER_RADIUS = 25.0;
+
+const double ASTEROID_RADIUS = 50.0;
+const double ASTEROID_SPAWN_INTERVAL = 0.5;
+const int    ASTEROID_MAX_COUNT = 70;
+
+const int SHOT_RADIUS = 5;
+const int UPGRADE_DROP_CHANCE_PERCENT = 15;
+
+
+class Circle {
+public:
+    Circle(double x,double y,double r)
+        : x(x),y(y),r(r),vx(0),vy(0),alive(true) {}
+    virtual ~Circle() = default;
+
+    virtual void Update(double dt) { x += vx * dt; y += vy * dt; }
+    virtual void Draw(wxDC& dc) = 0;
+
+    bool Hit(const Circle& o) const {
+        double dx = x - o.x;
+        double dy = y - o.y;
+        double rr = r + o.r;
+        return dx*dx + dy*dy <= rr*rr;
+    }
+
+    void Kill() { alive = false; }
+    bool Alive() const { return alive; }
+
+    void SetV(double a,double b) { vx = a; vy = b; }
+    double X() const { return x; }
+    double Y() const { return y; }
+    double R() const { return r; }
+
+    void SetX(double v) { x = v; }
+    void SetY(double v) { y = v; }
+
+protected:
+    double x,y,r,vx,vy;
+    bool alive;
+};
+
+// shot
+class Shot : public Circle {
+public:
+    Shot(double x,double y,double vx,double vy,double radius)
+        : Circle(x,y,radius) { SetV(vx,vy); }
+
+    void Update(double dt) override { Circle::Update(dt); }
+
+    void Draw(wxDC& dc) override {
+        dc.SetPen(*wxWHITE_PEN);
+        dc.SetBrush(*wxTRANSPARENT_BRUSH);
+        dc.DrawCircle(wxPoint((int)x,(int)y),(int)r);
+    }
+};
+
+// Asteroid
+class Asteroid : public Circle {
+public:
+    Asteroid(double x,double y,double r)
+        : Circle(x,y,r) {}
+
+    void Update(double dt) override { Circle::Update(dt); }
+
+    void Draw(wxDC& dc) override {
+        dc.SetPen(*wxWHITE_PEN);
+        dc.SetBrush(*wxTRANSPARENT_BRUSH);
+        dc.DrawCircle(wxPoint((int)x,(int)y),(int)r);
+    }
+
+    void Split(std::vector<std::unique_ptr<Asteroid>>& v) {
+        Kill();
+        if (r < 18.0) return;
+
+        for (int i = 0; i < 2; ++i) {
+            double nr = r * 0.5;
+            auto a = std::make_unique<Asteroid>(x,y,nr);
+
+            double ang = (std::rand() % 360) * M_PI / 180.0;
+            double s = 140.0;
+
+            a->SetV(std::cos(ang)*s, std::sin(ang)*s);
+            v.push_back(std::move(a));
+        }
+    }
+};
+
+// Upgrade
+enum class UpgradeType { Multishot, RapidFire, BigShot };
+
+class Upgrade : public Circle {
+public:
+    Upgrade(double x,double y,UpgradeType t)
+        : Circle(x,y,14.0),type(t) {
+        SetV(0.0, 80.0);
+    }
+
+    void Update(double dt) override { Circle::Update(dt); }
+
+    void Draw(wxDC& dc) override {
+        dc.SetPen(*wxWHITE_PEN);
+        int rr = (int)r;
+        int cx = (int)x;
+        int cy = (int)y;
+
+
+        if (type == UpgradeType::BigShot) {
+            dc.SetBrush(*wxWHITE_BRUSH);
+            wxPoint outer[3] = {
+                wxPoint(cx, cy - rr),
+                wxPoint(cx + rr, cy + rr),
+                wxPoint(cx - rr, cy + rr)
+            };
+            dc.DrawPolygon(3, outer);
+
+            dc.SetBrush(*wxBLACK_BRUSH);
+            int ir = rr / 2;
+            wxPoint inner[3] = {
+                wxPoint(cx, cy - ir),
+                wxPoint(cx + ir, cy + ir),
+                wxPoint(cx - ir, cy + ir)
+            };
+            dc.DrawPolygon(3, inner);
+        }
+
+
+        else if (type == UpgradeType::RapidFire) {
+            dc.SetBrush(*wxTRANSPARENT_BRUSH);
+            wxPoint diamond[4] = {
+                wxPoint(cx,      cy - rr),
+                wxPoint(cx + rr, cy),
+                wxPoint(cx,      cy + rr),
+                wxPoint(cx - rr, cy)
+            };
+            dc.DrawPolygon(4, diamond);
+
+            int off = rr / 3;
+            dc.DrawLine(cx - off, cy - off, cx, cy);
+            dc.DrawLine(cx - off, cy + off, cx, cy);
+
+            dc.DrawLine(cx + off, cy - off, cx + off*2, cy);
+            dc.DrawLine(cx + off, cy + off, cx + off*2, cy);
+        }
+
+
+        else if (type == UpgradeType::Multishot) {
+            dc.SetBrush(*wxWHITE_BRUSH);
+            wxPoint square[4] = {
+                wxPoint(cx - rr, cy - rr),
+                wxPoint(cx + rr, cy - rr),
+                wxPoint(cx + rr, cy + rr),
+                wxPoint(cx - rr, cy + rr)
+            };
+            dc.DrawPolygon(4, square);
+
+            dc.SetBrush(*wxBLACK_BRUSH);
+
+            int br = rr/4;
+            int offset = rr/2;
+
+            dc.DrawCircle(wxPoint(cx - offset, cy), br);
+            dc.DrawCircle(wxPoint(cx, cy), br);
+            dc.DrawCircle(wxPoint(cx + offset, cy), br);
+        }
+    }
+
+    UpgradeType Type() const { return type; }
+
+private:
+    UpgradeType type;
+};
+
+// Player
+class Player : public Circle {
+public:
+    Player(double x,double y,double r)
+        : Circle(x,y,r),
+          rot(0.0),
+          shootTimer(0.0),
+          shotsPerBurst(1),
+          spreadDegrees(0.0),
+          rapidCooldown(-1.0),
+          shotScale(1.0) {}
+
+    void Draw(wxDC& dc) override {
+        auto t = Triangle();
+        dc.SetPen(*wxWHITE_PEN);
+        dc.SetBrush(*wxTRANSPARENT_BRUSH);
+        dc.DrawPolygon((int)t.size(), t.data());
+    }
+
+    void Update(double dt) override { shootTimer -= dt; }
+
+    void Rotate(double dt) { rot += PLAYER_TURN_SPEED * dt; }
+    void Move(double dt) {
+        double fx = sin(rot), fy = -cos(rot);
+        x += fx * PLAYER_SPEED * dt;
+        y += fy * PLAYER_SPEED * dt;
+    }
+
+    void Shoot(std::vector<std::unique_ptr<Shot>>& v) {
+        if (shootTimer > 0) return;
+
+        double baseCooldown = (rapidCooldown >= 0 ? rapidCooldown : PLAYER_SHOOT_COOLDOWN);
+        int n = std::max(1, shotsPerBurst);
+
+        double spreadRad = spreadDegrees * M_PI / 180.0;
+        double start = (n == 1 ? 0 : -spreadRad/2);
+        double step = (n == 1 ? 0 : spreadRad/(n-1));
+
+        for (int i = 0; i < n; i++) {
+            double ang = rot + (start + i * step);
+            double fx = sin(ang), fy = -cos(ang);
+
+            v.push_back(std::make_unique<Shot>(
+                x, y, fx*PLAYER_SHOOT_SPEED, fy*PLAYER_SHOOT_SPEED,
+                SHOT_RADIUS * shotScale
+            ));
+        }
+
+        shootTimer = baseCooldown;
+    }
+
+    void SetMultishot(int count, double spread) {
+        shotsPerBurst = count;
+        spreadDegrees = spread;
+    }
+
+    void SetRapidFire(double cd) {
+        rapidCooldown = cd;
+    }
+
+    void SetBigShot(bool active) {
+        shotScale = active ? 2.3 : 1.0;
+    }
+
+private:
+    std::vector<wxPoint> Triangle() const {
+        double fx = sin(rot), fy = -cos(rot);
+        double rx = cos(rot)*r/1.5, ry = sin(rot)*r/1.5;
+        wxPoint A(x+fx*r, y+fy*r);
+        wxPoint B(x-fx*r-rx, y-fy*r-ry);
+        wxPoint C(x-fx*r+rx, y-fy*r+ry);
+        return {A,B,C};
+    }
+
+    double rot;
+    double shootTimer;
+    int shotsPerBurst;
+    double spreadDegrees;
+    double rapidCooldown;
+    double shotScale;
+};
+
+
+class GameFrame;
+
+class GameApp : public wxApp {
+public:
+    bool OnInit() override;
+};
+
+class GameFrame : public wxFrame {
+public:
+    GameFrame();
+private:
+    void OnPaint(wxPaintEvent& e);
+    void OnTimer(wxTimerEvent& e);
+
+    wxTimer* timer;
+    std::unique_ptr<Player> player;
+    std::vector<std::unique_ptr<Asteroid>> asteroids;
+    std::vector<std::unique_ptr<Shot>> shots;
+    std::vector<std::unique_ptr<Upgrade>> upgrades;
+    int score;
+
+    void Restart();
+    wxDECLARE_EVENT_TABLE();
+};
+
+wxBEGIN_EVENT_TABLE(GameFrame,wxFrame)
+    EVT_PAINT(GameFrame::OnPaint)
+    EVT_TIMER(wxID_ANY,GameFrame::OnTimer)
+wxEND_EVENT_TABLE()
+
+wxIMPLEMENT_APP(GameApp);
+
+bool GameApp::OnInit() {
+    std::srand((unsigned)std::time(nullptr));
+    GameFrame* f = new GameFrame();
+    f->Show(true);
+    return true;
+}
+
+GameFrame::GameFrame()
+    : wxFrame(nullptr,wxID_ANY,"Asteroids",
+              wxDefaultPosition,wxSize(SW,SH)),
+      timer(nullptr),score(0) {
+
+    SetBackgroundColour(*wxBLACK);
+
+    player = std::make_unique<Player>(SW/2, SH/2, PLAYER_RADIUS);
+
+    timer = new wxTimer(this);
+    timer->Start(16);
+    SetFocus();
+}
+
+void GameFrame::Restart() {
+    asteroids.clear();
+    shots.clear();
+    upgrades.clear();
+    score = 0;
+    player = std::make_unique<Player>(SW/2, SH/2, PLAYER_RADIUS);
+}
+
+void GameFrame::OnTimer(wxTimerEvent&) {
+    double dt = 0.016;
+
+    static double spawn = 0.0;
+    spawn += dt;
+
+    if (spawn >= ASTEROID_SPAWN_INTERVAL && asteroids.size() < ASTEROID_MAX_COUNT) {
+        spawn = 0.0;
+        int side = rand() % 2;
+        double x = (side == 0 ? -ASTEROID_RADIUS : SW + ASTEROID_RADIUS);
+        double y = rand() % SH;
+        double speed = 120 + rand()%80;
+        double vx = side == 0 ? speed : -speed;
+        double vy = -80 + rand()%160;
+
+        auto a = std::make_unique<Asteroid>(x,y,ASTEROID_RADIUS);
+        a->SetV(vx,vy);
+        asteroids.push_back(std::move(a));
+    }
+
+
+    for (auto& a : asteroids) a->Update(dt);
+    for (auto& s : shots) s->Update(dt);
+    for (auto& u : upgrades) u->Update(dt);
+    player->Update(dt);
+
+
+    if (wxGetKeyState(WXK_LEFT)  || wxGetKeyState((wxKeyCode)'A')) player->Rotate(-dt);
+    if (wxGetKeyState(WXK_RIGHT) || wxGetKeyState((wxKeyCode)'D')) player->Rotate(dt);
+    if (wxGetKeyState(WXK_UP)    || wxGetKeyState((wxKeyCode)'W')) player->Move(dt);
+    if (wxGetKeyState(WXK_DOWN)  || wxGetKeyState((wxKeyCode)'S')) player->Move(-dt);
+    if (wxGetKeyState(WXK_SPACE)) player->Shoot(shots);
+
+
+    for (auto& sh : shots) {
+        if (!sh->Alive()) continue;
+
+        for (auto& as : asteroids) {
+            if (!as->Alive()) continue;
+
+            if (sh->Hit(*as)) {
+                sh->Kill();
+
+                double ax = as->X();
+                double ay = as->Y();
+
+                as->Split(asteroids);
+                score++;
+
+
+                if (rand()%100 < UPGRADE_DROP_CHANCE_PERCENT) {
+                    int r = rand() % 3;
+                    UpgradeType t = (r==0?UpgradeType::Multishot :
+                                    (r==1?UpgradeType::RapidFire :
+                                          UpgradeType::BigShot));
+                    upgrades.push_back(std::make_unique<Upgrade>(ax,ay,t));
+                }
+
+                break;
+            }
+        }
+    }
+
+
+    shots.erase(
+        std::remove_if(shots.begin(),shots.end(),
+            [](auto& s){ return !s->Alive(); }), shots.end()
+    );
+
+    asteroids.erase(
+        std::remove_if(asteroids.begin(),asteroids.end(),
+            [](auto& a){ return !a->Alive(); }), asteroids.end()
+    );
+
+    for (auto& a : asteroids) {
+        if (a->Alive() && player->Hit(*a)) {
+            Restart();
+            break;
+        }
+    }
+
+
+    for (auto& up : upgrades) {
+        if (!up->Alive()) continue;
+
+        if (player->Hit(*up)) {
+            if (up->Type() == UpgradeType::Multishot)
+                player->SetMultishot(5, 28.0);
+            else if (up->Type() == UpgradeType::RapidFire)
+                player->SetRapidFire(0.12);
+            else
+                player->SetBigShot(true);
+
+            up->Kill();
+        }
+    }
+
+    upgrades.erase(
+        std::remove_if(upgrades.begin(),upgrades.end(),
+            [](auto& u){ return !u->Alive(); }), upgrades.end()
+    );
+
+    Refresh(false);
+}
+
+void GameFrame::OnPaint(wxPaintEvent&) {
+    wxPaintDC dc(this);
+
+    player->Draw(dc);
+    for (auto& a : asteroids) a->Draw(dc);
+    for (auto& s : shots) s->Draw(dc);
+    for (auto& u : upgrades) u->Draw(dc);
+
+    dc.SetTextForeground(wxColour(255,255,255));
+    dc.DrawText(wxString::Format("Score: %d", score), 20, 20);
+}
