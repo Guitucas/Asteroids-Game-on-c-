@@ -35,3 +35,5 @@ Please read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes.
 
 ## License
 This project is licensed under the MIT License.
+
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Guitucas/Asteroids-Game-on-c-/badge)](https://scorecard.dev/viewer/?uri=github.com/Guitucas/Asteroids-Game-on-c-)
