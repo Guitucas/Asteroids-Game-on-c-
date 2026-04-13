@@ -9,7 +9,7 @@
 #include <cstdlib>
 #include <ctime>
 
-// Balanceamento
+// Game specs Edit to new ways of playing
 const int SW = 1280;
 const int SH = 720;
 
