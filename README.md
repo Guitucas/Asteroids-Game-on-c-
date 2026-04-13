@@ -1,3 +1,9 @@
+[![OpenSSF Best Practices](https://bestpractices.coreinfrastructure.org/projects/12499/badge)](https://bestpractices.coreinfrastructure.org/projects/12499)
+
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Guitucas/Asteroids-Game-on-c-/badge)](https://scorecard.dev/viewer/?uri=github.com/Guitucas/Asteroids-Game-on-c-)
+
+# Asteroids Game in C++
+
 # Asteroids Game in C++
 
 A simple Asteroids-style game developed in C++ using wxWidgets for COP 3003 at Florida Gulf Coast University.
@@ -35,5 +41,3 @@ Please read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes.
 
 ## License
 This project is licensed under the MIT License.
-
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Guitucas/Asteroids-Game-on-c-/badge)](https://scorecard.dev/viewer/?uri=github.com/Guitucas/Asteroids-Game-on-c-)
